@@ -1,0 +1,4 @@
+flask==2.0.2
+sqlalchemy==1.2.10
+faker==2.0.2
+pytest==6.2.5
