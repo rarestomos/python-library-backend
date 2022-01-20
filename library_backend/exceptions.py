@@ -20,7 +20,7 @@ class InvalidBook(Exception):
 
 class BookAlreadyExists(Exception):
     def __init__(self, value):
-        super().__init__(f"Book with name: {value['name']} writen by author: {value['author']} already exists")
+        super().__init__(f"Book with name: {value['name']} written by author: {value['author']} already exists")
 
 
 class ReservationAlreadyExists(Exception):
@@ -46,6 +46,11 @@ class InvalidFieldException(ValueError):
 class RequiredCharactersLengthException(ValueError):
     def __init__(self, field_name, min=3, max=70):
         super().__init__(f"'{field_name}' must be between {min} and {max} characters")
+
+
+class DatabaseCommunicationIssue(Exception):
+    def __init__(self, action):
+        super().__init__(f"There was an error performing the {action}")
 
 
 class AlphanumericException(ValueError):

@@ -126,20 +126,26 @@ class SQLiteDatabaseConnection:
     @check_session()
     def get_reserved_books(self):
         result = self.session.query(UsersDBModel, BooksDBModel) \
-            .join(ReservationsDBModel).join(BooksDBModel).all()
+            .join(ReservationsDBModel, UsersDBModel.id == ReservationsDBModel.user_id) \
+            .join(BooksDBModel, ReservationsDBModel.book_id == BooksDBModel.id)\
+            .all()
         return result
 
     @check_session()
     def get_full_reserved_books_info(self):
         result = self.session.query(UsersDBModel, BooksDBModel, ReservationsDBModel) \
-            .join(ReservationsDBModel).join(BooksDBModel).order_by(UsersDBModel.first_name).all()
+            .join(ReservationsDBModel, UsersDBModel.id == ReservationsDBModel.user_id) \
+            .join(BooksDBModel, ReservationsDBModel.book_id == BooksDBModel.id)\
+            .order_by(UsersDBModel.first_name).all()
         return result
 
     @check_session()
     def get_reserved_book_by_user_id_and_book_id(self, user_id, book_id):
         result = self.session.query(UsersDBModel, BooksDBModel, ReservationsDBModel) \
-            .join(ReservationsDBModel).join(BooksDBModel).filter(
-            UsersDBModel.id == user_id).filter(BooksDBModel.id == book_id).one_or_none()
+            .join(ReservationsDBModel, UsersDBModel.id == ReservationsDBModel.user_id)\
+            .join(BooksDBModel, ReservationsDBModel.book_id == BooksDBModel.id)\
+            .filter(UsersDBModel.id == user_id)\
+            .filter(BooksDBModel.id == book_id).one_or_none()
         return result
 
     @check_session()
@@ -178,14 +184,16 @@ class SQLiteDatabaseConnection:
     @check_session()
     def get_reserved_books_by_user_id(self, user_id):
         result = self.session.query(UsersDBModel, BooksDBModel, ReservationsDBModel) \
-            .join(ReservationsDBModel).join(BooksDBModel)\
+            .join(ReservationsDBModel, UsersDBModel.id == ReservationsDBModel.user_id) \
+            .join(BooksDBModel, ReservationsDBModel.book_id == BooksDBModel.id) \
             .filter(UsersDBModel.id == user_id).all()
         return result
 
     @check_session()
     def get_reservation_by_book_id(self, book_id):
         result = self.session.query(UsersDBModel, BooksDBModel, ReservationsDBModel) \
-            .join(ReservationsDBModel).join(BooksDBModel) \
+            .join(ReservationsDBModel, UsersDBModel.id == ReservationsDBModel.user_id) \
+            .join(BooksDBModel, ReservationsDBModel.book_id == BooksDBModel.id) \
             .filter(BooksDBModel.id == book_id).all()
         return result
 

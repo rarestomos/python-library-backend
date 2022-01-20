@@ -4,7 +4,7 @@ from library_backend.exceptions import (UserAlreadyExists,
                                         InvalidFieldException,
                                         BookAlreadyExists,
                                         ReservationAlreadyExists,
-                                        ReservationIsInvalid)
+                                        ReservationIsInvalid, DatabaseCommunicationIssue)
 from library_backend.models.database.books_db_model import BooksDBModel
 from library_backend.models.database.reservations_db_model import ReservationsDBModel
 from library_backend.models.database.users_db_model import *
@@ -34,7 +34,7 @@ class UserService:
         with db:
             user = db.get_user_by_id(user_id)
             if not user:
-                raise ResourceNotFound(resource_type="User", field="user_id", value=user_id)
+                raise ResourceNotFound(resource_type="User", field="id", value=user_id)
             user = user.serialize()
 
         return user
@@ -44,21 +44,21 @@ class UserService:
         with db:
             rows = db.delete_user_by_id(user_id)
         if rows == 0:
-            raise ResourceNotFound(resource_type="User", field="user_id", value=user_id)
+            raise ResourceNotFound(resource_type="User", field="id", value=user_id)
+        return f"Successfully deleted user {user_id}"
 
     def update_user(self, user_id, new_user):
-        if new_user.get("id"):
-            del new_user["id"]
         old_user = self.get_user(user_id)
+        new_user["id"] = old_user["id"]
         if not old_user["email"] == new_user["email"]:
             raise InvalidFieldException("email")
         db = SQLiteDatabaseConnection()
-        user_model = UsersDBModel(id=user_id, **new_user)
+        user_model = UsersDBModel(**new_user)
         with db:
             rows = db.update_user(user_id, user_model)
         user = self.get_user(user_id)
         if rows == 0:
-            raise Exception
+            raise DatabaseCommunicationIssue("update user")
         return user
 
 
@@ -104,7 +104,7 @@ class BookService:
                 raise BookAlreadyExists(new_book)
             rows = db.update_book(book_id, new_book_model)
             if rows == 0:
-                raise Exception
+                raise DatabaseCommunicationIssue("update book")
         return self.get_book(book_id)
 
     def delete_book(self, book_id):
@@ -113,6 +113,7 @@ class BookService:
             rows = db.delete_book_by_id(book_id)
         if rows == 0:
             raise ResourceNotFound(resource_type="Book", field="id", value=book_id)
+        return f"Successfully deleted book {book_id}"
 
     def get_book_by_partial_name(self, book_name):
         db = SQLiteDatabaseConnection()
@@ -146,24 +147,28 @@ class ReservationService:
         return reservations_list
 
     def add_reservation(self, reservation_payload):
+        try:
+            self._validate_reservation_payload(reservation_payload)
+        except Exception as e:
+            raise e
         reservation = ReservationsDBModel(**reservation_payload)
         existing_reservation = self._get_reservation_by_user_id_and_book_id(reservation.user_id, reservation.book_id)
         if existing_reservation:
             raise ReservationAlreadyExists(reservation_payload)
         with self.db:
             self.db.add_reservation(reservation)
-            user, book, reservation = self.db.get_reserved_book_by_user_id_and_book_id(user_id=reservation.user_id,
-                                                                                       book_id=reservation.book_id)
-            reservation_details = {"user": user.serialize(),
-                                   "book": book.serialize(),
-                                   "reservation_date": reservation.reservation_date,
-                                   "reservation_expiration_date": reservation.reservation_expiration_date
-                                   }
-        if reservation_details:
-            return reservation_details
-        else:
-            raise ResourceNotFound(resource_type="reservation", field="user_id and book_id",
-                                   value=f"{reservation.user_id} and {reservation.book_id}")
+            try:
+                user, book, reservation = self.db.get_reserved_book_by_user_id_and_book_id(user_id=reservation.user_id,
+                                                                                           book_id=reservation.book_id)
+                reservation_details = {"user": user.serialize(),
+                                       "book": book.serialize(),
+                                       "reservation_date": reservation.reservation_date,
+                                       "reservation_expiration_date": reservation.reservation_expiration_date
+                                       }
+                return reservation_details
+            except TypeError:
+                raise ResourceNotFound(resource_type="Reservation", field="(user_id, book_id)",
+                                       value=(reservation_payload['user_id'], reservation_payload['book_id']))
 
     def get_reservation_by_user_id_and_book_id(self, user_id, book_id):
         with self.db:
@@ -177,8 +182,8 @@ class ReservationService:
                                }
                 return reservation
             except TypeError:
-                raise ResourceNotFound(resource_type="reservation", field="user_id and book_id",
-                                       value=f"{user_id} and {book_id}")
+                raise ResourceNotFound(resource_type="Reservation",
+                                       field="(user_id, book_id)", value=(user_id, book_id))
 
     def _get_reservation_by_user_id_and_book_id(self, user_id, book_id):
         try:
@@ -215,14 +220,14 @@ class ReservationService:
             rows = self.db.delete_reservation_by_user(user_id)
         if rows == 0:
             raise ResourceNotFound(resource_type="Reservation", field="user_id", value=user_id)
-        return rows
+        return f"Deleted {rows} reservations for user {user_id}"
 
     def delete_reservation_by_user_and_book(self, user_id, book_id):
         with self.db:
             rows = self.db.delete_reservation_by_user_and_book_id(user_id=user_id, book_id=book_id)
         if rows == 0:
             raise ResourceNotFound(resource_type="Reservation", field="(user_id, book_id)", value=(user_id, book_id))
-        return rows
+        return f"Deleted reservation for user {user_id} and book {book_id}"
 
     def update_reservation(self, user_id, book_id, reservation_payload):
         reservation = ReservationsDBModel(**reservation_payload)
@@ -231,7 +236,7 @@ class ReservationService:
         with self.db:
             rows = self.db.update_reservation(reservation)
         if rows == 0:
-            raise Exception()
+            raise DatabaseCommunicationIssue("update reservation")
         return self._get_reservation_by_user_id_and_book_id(user_id=reservation.user_id, book_id=reservation.book_id)
 
     def delete_reservation_for_book(self, book_id):
@@ -239,4 +244,14 @@ class ReservationService:
             rows = self.db.delete_reservation_by_book(book_id=book_id)
         if rows == 0:
             raise ResourceNotFound(resource_type="Reservation", field="book_id", value=book_id)
-        return rows
+        return f"Deleted reservation for book {book_id}"
+
+    def _validate_reservation_payload(self, reservation_payload):
+        reservation = ReservationsDBModel(**reservation_payload)
+        with self.db:
+            rows = self.db.get_book_by_id(reservation.book_id)
+            if not rows:
+                raise ResourceNotFound(resource_type="Book", field="book_id", value=reservation.book_id)
+            rows = self.db.get_user_by_id(reservation.user_id)
+            if not rows:
+                raise ResourceNotFound(resource_type="User", field="user_id", value=reservation.user_id)
